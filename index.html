@@ -50,13 +50,13 @@
       text-align: center;
       position: relative;
     }
-    #qr-canvas {
+    canvas {
       max-width: 100%;
-      cursor: grab;
     }
     .draggable {
       position: absolute;
       cursor: move;
+      user-select: none;
     }
     @media (max-width: 600px) {
       .container {
@@ -69,8 +69,8 @@
   <h1>Advanced QR Code Generator</h1>
   <div class="container">
     <div class="input-section">
-      <label for="content">Content (URL, Text, etc.)</label>
-      <input type="text" id="content" placeholder="Enter URL or text" oninput="generateQR()">
+      <label for="content">Content</label>
+      <input type="text" id="content" oninput="generateQR()" placeholder="Enter URL or text">
 
       <label for="fg-color">Foreground Color</label>
       <input type="color" id="fg-color" value="#000000" onchange="generateQR()">
@@ -78,7 +78,7 @@
       <label for="bg-color">Background Color</label>
       <input type="color" id="bg-color" value="#ffffff" onchange="generateQR()">
 
-      <label for="bg-image">Background Image (Optional)</label>
+      <label for="bg-image">Background Image</label>
       <input type="file" id="bg-image" accept="image/*" onchange="generateQR()">
 
       <label for="shape">QR Code Shape</label>
@@ -86,22 +86,16 @@
         <option value="square">Square</option>
         <option value="circle">Circle</option>
         <option value="hexagon">Hexagon</option>
-        <option value="rounded">Rounded Square</option>
+        <option value="rounded">Rounded</option>
         <option value="triangle">Triangle</option>
       </select>
 
-      <label for="logo">Upload Logo (Optional)</label>
+      <label for="logo">Upload Logo</label>
       <input type="file" id="logo" accept="image/*" onchange="generateQR()">
       <button onclick="removeLogo()">Remove Logo</button>
 
-      <label for="logo-size">Logo Size (%)</label>
-      <input type="range" id="logo-size" min="10" max="50" value="20" oninput="generateQR()">
-
-      <label for="text-overlay">Text Overlay (Optional)</label>
-      <input type="text" id="text-overlay" placeholder="Add text on QR code" oninput="generateQR()">
-
-      <label for="size">QR Code Size</label>
-      <input type="number" id="size" min="100" max="1000" value="300" onchange="generateQR()">
+      <label for="text-overlay">Text Overlay</label>
+      <input type="text" id="text-overlay" oninput="generateQR()" placeholder="Enter overlay text">
 
       <label for="format">Download Format</label>
       <select id="format">
@@ -111,154 +105,127 @@
 
       <button onclick="downloadQR()">Download QR Code</button>
     </div>
+
     <div class="preview-section">
       <h3>Preview</h3>
       <div id="qr-preview"></div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script>
-    let qrCodeData = null;
-    let logoImg = null;
-    let textDiv = null;
+    let logoImg, textDiv;
 
     function generateQR() {
-      const content = document.getElementById('content').value.trim();
-      const fgColor = document.getElementById('fg-color').value;
-      const bgColor = document.getElementById('bg-color').value;
+      const content = document.getElementById('content').value;
+      const fg = document.getElementById('fg-color').value;
+      const bg = document.getElementById('bg-color').value;
       const shape = document.getElementById('shape').value;
-      const bgImageInput = document.getElementById('bg-image');
-      const logoInput = document.getElementById('logo');
-      const logoSizePercent = parseInt(document.getElementById('logo-size').value, 10);
-      const textOverlay = document.getElementById('text-overlay').value;
-      const qrSize = parseInt(document.getElementById('size').value, 10);
+      const logoFile = document.getElementById('logo').files[0];
+      const text = document.getElementById('text-overlay').value;
+      const bgImageFile = document.getElementById('bg-image').files[0];
+      const preview = document.getElementById('qr-preview');
 
-      if (!content) return;
+      preview.innerHTML = '';
+      const canvas = document.createElement('canvas');
+      canvas.id = 'qr-canvas';
+      canvas.width = 300;
+      canvas.height = 300;
+      preview.appendChild(canvas);
 
-      const qrPreview = document.getElementById('qr-preview');
-      qrPreview.innerHTML = `<canvas id="qr-canvas" width="${qrSize}" height="${qrSize}"></canvas>`;
-      const finalCanvas = document.getElementById('qr-canvas');
-
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = qrSize;
-      tempCanvas.height = qrSize;
-
-      QRCode.toCanvas(tempCanvas, content, {
-        width: qrSize,
+      QRCode.toCanvas(canvas, content, {
+        width: 300,
         color: {
-          dark: fgColor,
-          light: bgColor
+          dark: fg,
+          light: bg
         },
         errorCorrectionLevel: 'H'
-      }, () => {
-        applyShape(finalCanvas, tempCanvas, shape);
+      }, async (err) => {
+        if (err) return console.error(err);
 
-        if (bgImageInput.files[0]) {
+        const ctx = canvas.getContext('2d');
+
+        // Apply background image
+        if (bgImageFile) {
           const bgImg = new Image();
-          bgImg.src = URL.createObjectURL(bgImageInput.files[0]);
-          bgImg.onload = () => {
-            const ctx = finalCanvas.getContext('2d');
-            ctx.drawImage(bgImg, 0, 0, qrSize, qrSize);
-            ctx.drawImage(tempCanvas, 0, 0);
-          };
+          bgImg.src = URL.createObjectURL(bgImageFile);
+          await bgImg.decode();
+          ctx.globalCompositeOperation = 'destination-over';
+          ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
         }
 
-        if (logoInput.files[0]) {
-          logoImg = new Image();
-          logoImg.className = 'draggable';
-          logoImg.src = URL.createObjectURL(logoInput.files[0]);
-          logoImg.style.width = `${qrSize * (logoSizePercent / 100)}px`;
-          logoImg.style.left = `${qrSize / 2 - (qrSize * logoSizePercent / 200)}px`;
-          logoImg.style.top = `${qrSize / 2 - (qrSize * logoSizePercent / 200)}px`;
+        // Apply shape
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.beginPath();
+        const r = canvas.width / 2;
+        if (shape === 'circle') {
+          ctx.arc(r, r, r, 0, Math.PI * 2);
+        } else if (shape === 'hexagon') {
+          for (let i = 0; i < 6; i++) {
+            const angle = (Math.PI / 3) * i;
+            const x = r + r * Math.cos(angle);
+            const y = r + r * Math.sin(angle);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+        } else if (shape === 'triangle') {
+          ctx.moveTo(r, 0);
+          ctx.lineTo(0, canvas.height);
+          ctx.lineTo(canvas.width, canvas.height);
+        } else if (shape === 'rounded') {
+          ctx.arc(r, r, r, 0, Math.PI * 2);
+        } else {
+          ctx.rect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.closePath();
+        ctx.clip();
+        ctx.putImageData(imageData, 0, 0);
+
+        // Add logo
+        if (logoFile) {
+          const img = new Image();
+          img.src = URL.createObjectURL(logoFile);
+          await img.decode();
+          logoImg = document.createElement('img');
+          logoImg.src = img.src;
+          logoImg.classList.add('draggable');
+          logoImg.style.top = '40%';
+          logoImg.style.left = '40%';
+          logoImg.style.width = '60px';
+          logoImg.style.height = '60px';
+          preview.appendChild(logoImg);
           makeDraggable(logoImg);
-          qrPreview.appendChild(logoImg);
         }
 
-        if (textOverlay) {
+        // Add text overlay
+        if (text) {
           textDiv = document.createElement('div');
-          textDiv.className = 'draggable';
-          textDiv.textContent = textOverlay;
+          textDiv.innerText = text;
+          textDiv.classList.add('draggable');
+          textDiv.style.top = '85%';
+          textDiv.style.left = '50%';
+          textDiv.style.transform = 'translateX(-50%)';
           textDiv.style.font = '20px Arial';
-          textDiv.style.left = '10px';
-          textDiv.style.top = `${qrSize - 30}px`;
+          preview.appendChild(textDiv);
           makeDraggable(textDiv);
-          qrPreview.appendChild(textDiv);
         }
-
-        qrCodeData = finalCanvas;
       });
     }
 
-    function applyShape(destinationCanvas, sourceCanvas, shape) {
-      const ctx = destinationCanvas.getContext('2d');
-      const w = destinationCanvas.width;
-      const h = destinationCanvas.height;
-
-      ctx.clearRect(0, 0, w, h);
-      ctx.save();
-
-      if (shape === 'circle') {
-        ctx.beginPath();
-        ctx.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-      } else if (shape === 'hexagon') {
-        const r = w / 2;
-        const cx = w / 2;
-        const cy = h / 2;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const angle = Math.PI / 3 * i - Math.PI / 6;
-          const x = cx + r * Math.cos(angle);
-          const y = cy + r * Math.sin(angle);
-          ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.clip();
-      } else if (shape === 'rounded') {
-        const radius = 40;
-        ctx.beginPath();
-        ctx.moveTo(radius, 0);
-        ctx.lineTo(w - radius, 0);
-        ctx.quadraticCurveTo(w, 0, w, radius);
-        ctx.lineTo(w, h - radius);
-        ctx.quadraticCurveTo(w, h, w - radius, h);
-        ctx.lineTo(radius, h);
-        ctx.quadraticCurveTo(0, h, 0, h - radius);
-        ctx.lineTo(0, radius);
-        ctx.quadraticCurveTo(0, 0, radius, 0);
-        ctx.closePath();
-        ctx.clip();
-      } else if (shape === 'triangle') {
-        ctx.beginPath();
-        ctx.moveTo(w / 2, 0);
-        ctx.lineTo(w, h);
-        ctx.lineTo(0, h);
-        ctx.closePath();
-        ctx.clip();
-      }
-
-      ctx.drawImage(sourceCanvas, 0, 0, w, h);
-      ctx.restore();
-    }
-
     function makeDraggable(el) {
-      el.style.position = 'absolute';
-      el.onmousedown = function (e) {
-        let offsetX = e.clientX - el.offsetLeft;
-        let offsetY = e.clientY - el.offsetTop;
-        function mouseMoveHandler(e) {
-          el.style.left = `${e.clientX - offsetX}px`;
-          el.style.top = `${e.clientY - offsetY}px`;
-        }
-        function reset() {
-          document.removeEventListener('mousemove', mouseMoveHandler);
-          document.removeEventListener('mouseup', reset);
-        }
-        document.addEventListener('mousemove', mouseMoveHandler);
-        document.addEventListener('mouseup', reset);
+      let offsetX, offsetY;
+      el.onmousedown = function(e) {
+        offsetX = e.clientX - el.offsetLeft;
+        offsetY = e.clientY - el.offsetTop;
+        document.onmousemove = function(e) {
+          el.style.left = e.clientX - offsetX + 'px';
+          el.style.top = e.clientY - offsetY + 'px';
+        };
+        document.onmouseup = function() {
+          document.onmousemove = null;
+          document.onmouseup = null;
+        };
       };
     }
 
@@ -270,44 +237,26 @@
     }
 
     function downloadQR() {
-      if (!qrCodeData) {
-        alert('Please generate a QR code first.');
-        return;
-      }
-
       const format = document.getElementById('format').value;
-      const filename = 'custom-qr-code.' + format;
+      const canvas = document.getElementById('qr-canvas');
+      if (!canvas) return alert('Generate the QR code first');
 
       if (format === 'png') {
         html2canvas(document.getElementById('qr-preview')).then(canvas => {
           const link = document.createElement('a');
-          link.download = filename;
-          link.href = canvas.toDataURL('image/png');
+          link.download = 'qr-code.png';
+          link.href = canvas.toDataURL();
           link.click();
         });
       } else if (format === 'svg') {
         const content = document.getElementById('content').value;
-        const fgColor = document.getElementById('fg-color').value;
-        const bgColor = document.getElementById('bg-color').value;
-
-        QRCode.toString(content, {
-          type: 'svg',
-          color: {
-            dark: fgColor,
-            light: bgColor
-          },
-          width: 300,
-          errorCorrectionLevel: 'H'
-        }, (error, svg) => {
-          if (error) {
-            console.error(error);
-            alert('Error generating SVG.');
-            return;
-          }
+        QRCode.toString(content, { type: 'svg' }, (err, svg) => {
+          if (err) return console.error(err);
           const blob = new Blob([svg], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
-          link.download = filename;
-          link.href = URL.createObjectURL(blob);
+          link.href = url;
+          link.download = 'qr-code.svg';
           link.click();
         });
       }
