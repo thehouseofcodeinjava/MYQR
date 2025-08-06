@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Custom QR Code Generator</title>
   <style>
     body {
@@ -100,8 +100,10 @@
     </div>
   </div>
 
+  <!-- External Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
   <script>
     let qrCodeData = null;
 
@@ -118,13 +120,14 @@
         return;
       }
 
-      // Clear previous QR code
       const qrPreview = document.getElementById('qr-preview');
-      qrPreview.innerHTML = '<canvas id="qr-canvas"></canvas>';
+      qrPreview.innerHTML = '<canvas id="qr-canvas" width="300" height="300"></canvas>';
 
-      // Generate QR code
-      const qrCanvas = document.getElementById('qr-canvas');
-      QRCode.toCanvas(qrCanvas, content, {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = 300;
+      tempCanvas.height = 300;
+
+      QRCode.toCanvas(tempCanvas, content, {
         width: 300,
         color: {
           dark: fgColor,
@@ -138,52 +141,59 @@
           return;
         }
 
-        // Apply shape
-        applyShape(qrCanvas, shape);
+        const finalCanvas = document.getElementById('qr-canvas');
+        applyShape(finalCanvas, tempCanvas, shape);
 
         // Add logo if provided
         if (logoInput.files[0]) {
           const logo = new Image();
           logo.src = URL.createObjectURL(logoInput.files[0]);
           logo.onload = () => {
-            const ctx = qrCanvas.getContext('2d');
-            const logoSize = qrCanvas.width * 0.2;
-            const logoX = (qrCanvas.width - logoSize) / 2;
-            const logoY = (qrCanvas.height - logoSize) / 2;
+            const ctx = finalCanvas.getContext('2d');
+            const logoSize = finalCanvas.width * 0.2;
+            const logoX = (finalCanvas.width - logoSize) / 2;
+            const logoY = (finalCanvas.height - logoSize) / 2;
             ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-            addTextOverlay(qrCanvas, textOverlay);
+            addTextOverlay(finalCanvas, textOverlay);
           };
         } else {
-          addTextOverlay(qrCanvas, textOverlay);
+          addTextOverlay(finalCanvas, textOverlay);
         }
 
-        qrCodeData = qrCanvas;
+        qrCodeData = finalCanvas;
       });
     }
 
-    function applyShape(canvas, shape) {
-      const ctx = canvas.getContext('2d');
-      const width = canvas.width;
-      const height = canvas.height;
-      const imageData = ctx.getImageData(0, 0, width, height);
+    function applyShape(destinationCanvas, sourceCanvas, shape) {
+      const ctx = destinationCanvas.getContext('2d');
+      const w = destinationCanvas.width;
+      const h = destinationCanvas.height;
 
-      ctx.clearRect(0, 0, width, height);
-      ctx.beginPath();
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
 
       if (shape === 'circle') {
-        ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2);
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2);
+        ctx.closePath();
         ctx.clip();
       } else if (shape === 'hexagon') {
-        const r = width / 2;
-        ctx.moveTo(r + r * Math.cos(0), r + r * Math.sin(0));
-        for (let i = 1; i <= 6; i++) {
-          ctx.lineTo(r + r * Math.cos(i * 2 * Math.PI / 6), r + r * Math.sin(i * 2 * Math.PI / 6));
+        const r = w / 2;
+        const cx = w / 2;
+        const cy = h / 2;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = Math.PI / 3 * i - Math.PI / 6;
+          const x = cx + r * Math.cos(angle);
+          const y = cy + r * Math.sin(angle);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
         }
         ctx.closePath();
         ctx.clip();
       }
-
-      ctx.putImageData(imageData, 0, 0);
+      ctx.drawImage(sourceCanvas, 0, 0, w, h);
+      ctx.restore();
     }
 
     function addTextOverlay(canvas, text) {
