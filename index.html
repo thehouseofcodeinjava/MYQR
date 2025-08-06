@@ -83,6 +83,7 @@
 
       <label for="mask-image">Mask Image (Transparent PNG)</label>
       <input type="file" id="mask-image" accept="image/png" onchange="generateQR()">
+      <button onclick="removeMask()">Remove Mask</button>
 
       <label for="shape">QR Code Shape</label>
       <select id="shape" onchange="generateQR()">
@@ -102,6 +103,9 @@
 
       <label for="text-overlay">Text Overlay</label>
       <input type="text" id="text-overlay" placeholder="Add text on QR code" oninput="generateQR()">
+
+      <label for="text-size">Text Size (px)</label>
+      <input type="range" id="text-size" min="10" max="50" value="20" oninput="generateQR()">
 
       <label for="size">QR Code Size</label>
       <input type="number" id="size" min="100" max="1000" value="300" onchange="generateQR()">
@@ -139,6 +143,7 @@
       const logoInput = document.getElementById('logo');
       const logoSizePercent = parseInt(document.getElementById('logo-size').value, 10);
       const textOverlay = document.getElementById('text-overlay').value;
+      const textSize = parseInt(document.getElementById('text-size').value, 10);
 
       const qrPreview = document.getElementById('qr-preview');
       qrPreview.innerHTML = `<canvas id="qr-canvas" width="${qrSize}" height="${qrSize}"></canvas>`;
@@ -211,9 +216,9 @@
             textDiv = document.createElement('div');
             textDiv.className = 'draggable';
             textDiv.textContent = textOverlay;
-            textDiv.style.font = '20px Arial';
+            textDiv.style.font = `${textSize}px Arial`;
             textDiv.style.left = '10px';
-            textDiv.style.top = `${qrSize - 30}px`;
+            textDiv.style.top = `${qrSize - textSize - 10}px`;
             makeDraggable(textDiv);
             qrPreview.appendChild(textDiv);
           }
@@ -297,6 +302,12 @@
         logoImg.parentNode.removeChild(logoImg);
         logoImg = null;
       }
+    }
+
+    function removeMask() {
+      const maskInput = document.getElementById('mask-image');
+      maskInput.value = ''; // Clear the file input
+      generateQR(); // Regenerate QR code without mask
     }
 
     function downloadQR() {
