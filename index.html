@@ -65,6 +65,11 @@
       border: 1px solid #ccc;
       display: none;
     }
+    #scannability-feedback {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #333;
+    }
     @media (max-width: 600px) {
       .container {
         flex-direction: column;
@@ -111,6 +116,14 @@
         <option value="triangle">Triangle</option>
       </select>
 
+      <label for="error-correction">Error Correction Level</label>
+      <select id="error-correction" onchange="generateQR()">
+        <option value="L">Low (7%)</option>
+        <option value="M">Medium (15%)</option>
+        <option value="Q">Quartile (25%)</option>
+        <option value="H" selected>High (30%)</option>
+      </select>
+
       <label for="logo">Upload Logo</label>
       <input type="file" id="logo" accept="image/*" onchange="generateQR()">
       <button onclick="removeLogo()">Remove Logo</button>
@@ -124,6 +137,17 @@
       <label for="text-size">Text Size (px)</label>
       <input type="range" id="text-size" min="10" max="50" value="20" oninput="generateQR()">
 
+      <label for="text-color">Text Color</label>
+      <input type="color" id="text-color" value="#000000" onchange="generateQR()">
+
+      <label for="template">Style Template</label>
+      <select id="template" onchange="applyTemplate()">
+        <option value="custom">Custom</option>
+        <option value="minimal">Minimal</option>
+        <option value="vibrant">Vibrant</option>
+        <option value="corporate">Corporate</option>
+      </select>
+
       <label for="size">QR Code Size</label>
       <input type="number" id="size" min="100" max="1000" value="300" onchange="generateQR()">
 
@@ -135,11 +159,14 @@
       </select>
 
       <button onclick="downloadQR()">Download QR Code</button>
+      <button onclick="undo()">Undo</button>
+      <button onclick="redo()">Redo</button>
     </div>
 
     <div class="preview-section">
       <h3>Preview</h3>
       <div id="qr-preview"></div>
+      <div id="scannability-feedback"></div>
     </div>
   </div>
 
@@ -151,6 +178,83 @@
     let logoImg = null;
     let textDiv = null;
     let maskImgElement = null;
+    let history = [];
+    let historyIndex = -1;
+
+    function saveState() {
+      const state = {
+        content: document.getElementById('content').value,
+        fgColor: document.getElementById('fg-color').value,
+        bgColor: document.getElementById('bg-color').value,
+        shape: document.getElementById('shape').value,
+        size: document.getElementById('size').value,
+        logoSize: document.getElementById('logo-size').value,
+        textOverlay: document.getElementById('text-overlay').value,
+        textSize: document.getElementById('text-size').value,
+        textColor: document.getElementById('text-color').value,
+        maskOpacity: document.getElementById('mask-opacity').value,
+        maskScale: document.getElementById('mask-scale').value,
+        invertMask: document.getElementById('invert-mask').checked,
+        errorCorrection: document.getElementById('error-correction').value,
+        template: document.getElementById('template').value
+      };
+      history = history.slice(0, historyIndex + 1);
+      history.push(state);
+      historyIndex++;
+    }
+
+    function undo() {
+      if (historyIndex > 0) {
+        historyIndex--;
+        applyState(history[historyIndex]);
+      }
+    }
+
+    function redo() {
+      if (historyIndex < history.length - 1) {
+        historyIndex++;
+        applyState(history[historyIndex]);
+      }
+    }
+
+    function applyState(state) {
+      document.getElementById('content').value = state.content;
+      document.getElementById('fg-color').value = state.fgColor;
+      document.getElementById('bg-color').value = state.bgColor;
+      document.getElementById('shape').value = state.shape;
+      document.getElementById('size').value = state.size;
+      document.getElementById('logo-size').value = state.logoSize;
+      document.getElementById('text-overlay').value = state.textOverlay;
+      document.getElementById('text-size').value = state.textSize;
+      document.getElementById('text-color').value = state.textColor;
+      document.getElementById('mask-opacity').value = state.maskOpacity;
+      document.getElementById('mask-scale').value = state.maskScale;
+      document.getElementById('invert-mask').checked = state.invertMask;
+      document.getElementById('error-correction').value = state.errorCorrection;
+      document.getElementById('template').value = state.template;
+      generateQR();
+    }
+
+    function applyTemplate() {
+      const template = document.getElementById('template').value;
+      if (template === 'minimal') {
+        document.getElementById('fg-color').value = '#000000';
+        document.getElementById('bg-color').value = '#ffffff';
+        document.getElementById('shape').value = 'square';
+        document.getElementById('text-color').value = '#000000';
+      } else if (template === 'vibrant') {
+        document.getElementById('fg-color').value = '#ff4500';
+        document.getElementById('bg-color').value = '#ffffe0';
+        document.getElementById('shape').value = 'circle';
+        document.getElementById('text-color').value = '#ff4500';
+      } else if (template === 'corporate') {
+        document.getElementById('fg-color').value = '#1e90ff';
+        document.getElementById('bg-color').value = '#f5f6f5';
+        document.getElementById('shape').value = 'rounded';
+        document.getElementById('text-color').value = '#1e90ff';
+      }
+      generateQR();
+    }
 
     function updateMaskPreview() {
       const maskInput = document.getElementById('mask-image');
@@ -163,7 +267,32 @@
       }
     }
 
+    function checkScannability() {
+      const fgColor = document.getElementById('fg-color').value;
+      const bgColor = document.getElementById('bg-color').value;
+      const maskOpacity = parseInt(document.getElementById('mask-opacity').value, 10) / 100;
+      const feedback = document.getElementById('scannability-feedback');
+
+      const getLuminance = (hex) => {
+        const r = parseInt(hex.slice(1, 3), 16) / 255;
+        const g = parseInt(hex.slice(3, 5), 16) / 255;
+        const b = parseInt(hex.slice(5, 7), 16) / 255;
+        return 0.299 * r + 0.587 * g + 0.114 * b;
+      };
+      const contrastRatio = (getLuminance(fgColor) + 0.05) / (getLuminance(bgColor) + 0.05);
+      const adjustedRatio = maskOpacity < 1 ? contrastRatio * maskOpacity : contrastRatio;
+
+      if (adjustedRatio < 0.5 || adjustedRatio > 2) {
+        feedback.textContent = 'Good scannability: Sufficient contrast.';
+        feedback.style.color = 'green';
+      } else {
+        feedback.textContent = 'Warning: Low contrast may affect scannability.';
+        feedback.style.color = 'red';
+      }
+    }
+
     function generateQR() {
+      saveState();
       const content = document.getElementById('content').value.trim();
       const fgColor = document.getElementById('fg-color').value;
       const bgColor = document.getElementById('bg-color').value;
@@ -173,9 +302,11 @@
       const logoSizePercent = parseInt(document.getElementById('logo-size').value, 10);
       const textOverlay = document.getElementById('text-overlay').value;
       const textSize = parseInt(document.getElementById('text-size').value, 10);
+      const textColor = document.getElementById('text-color').value;
       const maskOpacity = parseInt(document.getElementById('mask-opacity').value, 10) / 100;
       const maskScale = parseInt(document.getElementById('mask-scale').value, 10) / 100;
       const invertMask = document.getElementById('invert-mask').checked;
+      const errorCorrection = document.getElementById('error-correction').value;
 
       const qrPreview = document.getElementById('qr-preview');
       qrPreview.innerHTML = `<canvas id="qr-canvas" width="${qrSize}" height="${qrSize}"></canvas>`;
@@ -192,7 +323,7 @@
           dark: fgColor,
           light: bgColor
         },
-        errorCorrectionLevel: 'H'
+        errorCorrectionLevel: errorCorrection
       }, () => {
         ctx.clearRect(0, 0, qrSize, qrSize);
 
@@ -229,7 +360,6 @@
               shapedCtx.globalAlpha = 1.0;
               ctx.drawImage(shapedCanvas, 0, 0);
 
-              // Add draggable mask image for positioning
               if (maskImgElement) {
                 maskImgElement.remove();
               }
@@ -270,6 +400,7 @@
             textDiv.className = 'draggable';
             textDiv.textContent = textOverlay;
             textDiv.style.font = `${textSize}px Arial`;
+            textDiv.style.color = textColor;
             textDiv.style.left = '10px';
             textDiv.style.top = `${qrSize - textSize - 10}px`;
             makeDraggable(textDiv);
@@ -277,6 +408,7 @@
           }
 
           qrCodeData = finalCanvas;
+          checkScannability();
         }
       });
     }
@@ -356,6 +488,7 @@
         logoImg.parentNode.removeChild(logoImg);
         logoImg = null;
       }
+      generateQR();
     }
 
     function removeMask() {
@@ -389,6 +522,7 @@
         const content = document.getElementById('content').value;
         const fgColor = document.getElementById('fg-color').value;
         const bgColor = document.getElementById('bg-color').value;
+        const errorCorrection = document.getElementById('error-correction').value;
         QRCode.toString(content, {
           type: 'svg',
           color: {
@@ -396,7 +530,7 @@
             light: bgColor
           },
           width: 300,
-          errorCorrectionLevel: 'H'
+          errorCorrectionLevel: errorCorrection
         }, (error, svg) => {
           if (error) {
             console.error(error);
