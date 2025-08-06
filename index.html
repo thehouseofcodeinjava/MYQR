@@ -58,6 +58,13 @@
       position: absolute;
       cursor: move;
     }
+    #mask-preview {
+      width: 100px;
+      height: 100px;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      display: none;
+    }
     @media (max-width: 600px) {
       .container {
         flex-direction: column;
@@ -82,8 +89,18 @@
       <input type="file" id="bg-image" accept="image/*" onchange="generateQR()">
 
       <label for="mask-image">Mask Image (Transparent PNG)</label>
-      <input type="file" id="mask-image" accept="image/png" onchange="generateQR()">
+      <input type="file" id="mask-image" accept="image/png" onchange="updateMaskPreview(); generateQR()">
       <button onclick="removeMask()">Remove Mask</button>
+      <img id="mask-preview" alt="Mask Preview">
+
+      <label for="mask-opacity">Mask Opacity (%)</label>
+      <input type="range" id="mask-opacity" min="10" max="100" value="100" oninput="generateQR()">
+
+      <label for="mask-scale">Mask Scale (%)</label>
+      <input type="range" id="mask-scale" min="50" max="150" value="100" oninput="generateQR()">
+
+      <label for="invert-mask">Invert Mask</label>
+      <input type="checkbox" id="invert-mask" onchange="generateQR()">
 
       <label for="shape">QR Code Shape</label>
       <select id="shape" onchange="generateQR()">
@@ -133,6 +150,18 @@
     let qrCodeData = null;
     let logoImg = null;
     let textDiv = null;
+    let maskImgElement = null;
+
+    function updateMaskPreview() {
+      const maskInput = document.getElementById('mask-image');
+      const maskPreview = document.getElementById('mask-preview');
+      if (maskInput.files[0]) {
+        maskPreview.src = URL.createObjectURL(maskInput.files[0]);
+        maskPreview.style.display = 'block';
+      } else {
+        maskPreview.style.display = 'none';
+      }
+    }
 
     function generateQR() {
       const content = document.getElementById('content').value.trim();
@@ -144,6 +173,9 @@
       const logoSizePercent = parseInt(document.getElementById('logo-size').value, 10);
       const textOverlay = document.getElementById('text-overlay').value;
       const textSize = parseInt(document.getElementById('text-size').value, 10);
+      const maskOpacity = parseInt(document.getElementById('mask-opacity').value, 10) / 100;
+      const maskScale = parseInt(document.getElementById('mask-scale').value, 10) / 100;
+      const invertMask = document.getElementById('invert-mask').checked;
 
       const qrPreview = document.getElementById('qr-preview');
       qrPreview.innerHTML = `<canvas id="qr-canvas" width="${qrSize}" height="${qrSize}"></canvas>`;
@@ -189,9 +221,28 @@
             const maskImg = new Image();
             maskImg.src = URL.createObjectURL(maskInput.files[0]);
             maskImg.onload = () => {
-              shapedCtx.globalCompositeOperation = 'destination-in';
-              shapedCtx.drawImage(maskImg, 0, 0, qrSize, qrSize);
+              shapedCtx.globalCompositeOperation = invertMask ? 'destination-out' : 'destination-in';
+              shapedCtx.globalAlpha = maskOpacity;
+              const scaledSize = qrSize * maskScale;
+              const offset = (qrSize - scaledSize) / 2;
+              shapedCtx.drawImage(maskImg, offset, offset, scaledSize, scaledSize);
+              shapedCtx.globalAlpha = 1.0;
               ctx.drawImage(shapedCanvas, 0, 0);
+
+              // Add draggable mask image for positioning
+              if (maskImgElement) {
+                maskImgElement.remove();
+              }
+              maskImgElement = new Image();
+              maskImgElement.className = 'draggable';
+              maskImgElement.src = URL.createObjectURL(maskInput.files[0]);
+              maskImgElement.style.width = `${scaledSize}px`;
+              maskImgElement.style.left = `${offset}px`;
+              maskImgElement.style.top = `${offset}px`;
+              maskImgElement.style.opacity = maskOpacity;
+              makeDraggable(maskImgElement);
+              qrPreview.appendChild(maskImgElement);
+
               finalizeQR();
             };
           } else {
@@ -202,6 +253,7 @@
 
         function finalizeQR() {
           if (logoInput.files[0]) {
+            if (logoImg) logoImg.remove();
             logoImg = new Image();
             logoImg.className = 'draggable';
             logoImg.src = URL.createObjectURL(logoInput.files[0]);
@@ -213,6 +265,7 @@
           }
 
           if (textOverlay) {
+            if (textDiv) textDiv.remove();
             textDiv = document.createElement('div');
             textDiv.className = 'draggable';
             textDiv.textContent = textOverlay;
@@ -282,6 +335,7 @@
     function makeDraggable(el) {
       el.style.position = 'absolute';
       el.onmousedown = function (e) {
+        e.preventDefault();
         let offsetX = e.clientX - el.offsetLeft;
         let offsetY = e.clientY - el.offsetTop;
         function mouseMoveHandler(e) {
@@ -306,8 +360,14 @@
 
     function removeMask() {
       const maskInput = document.getElementById('mask-image');
-      maskInput.value = ''; // Clear the file input
-      generateQR(); // Regenerate QR code without mask
+      const maskPreview = document.getElementById('mask-preview');
+      maskInput.value = '';
+      maskPreview.style.display = 'none';
+      if (maskImgElement && maskImgElement.parentNode) {
+        maskImgElement.parentNode.removeChild(maskImgElement);
+        maskImgElement = null;
+      }
+      generateQR();
     }
 
     function downloadQR() {
